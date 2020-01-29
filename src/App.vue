@@ -1,20 +1,48 @@
 <template>
   <div id="app">
     <input type="file" @change="handleFileChange">
-    <el-button  type="primary" size="small" @click="handleUpload">上传</el-button>
+    <el-button  type="primary" size="small" :loading="status==='uploading'" @click="handleUpload">上传{{status==='uploading'?'中':''}}</el-button>
+    <div style="text-align: left;font-weight:bold; line-height: 48px;">总进度：</div>
+    <div class="total-percent">
+      <el-progress :percentage="uploadPercentage"></el-progress>
+    </div>
+    <div style="text-align: left;font-weight:bold; line-height: 48px;">切片进度：</div>
+    <el-table :data="data">
+      <el-table-column
+        prop="hash"
+        label="切片hash"
+        align="center"
+      ></el-table-column>
+      <el-table-column label="大小(KB)" align="center">
+        <template slot-scope="scope">
+          {{scope.row.size | formatBytes}}
+        </template>
+      </el-table-column>
+      <el-table-column label="进度" align="center">
+        <template slot-scope="scope">
+          <el-progress :percentage="scope.row.percentage"></el-progress>
+        </template>
+      </el-table-column>
+    </el-table>
   </div>
 </template>
 
 <script>
-const SIZE = 20 * 1024 * 1024  // 切片大小 10M
+const SIZE = 10 * 1024 * 1024  // 切片大小 10M
 export default {
   name: 'app',
+  filters: {
+    formatBytes(val) {
+      return Number((val / 1024).toFixed(0))
+    }
+  },
   data() {
     return {
       container: {
         file: null
       },
-      data: []
+      data: [],
+      status: ''
     }
   },
   computed: {
@@ -22,7 +50,8 @@ export default {
     uploadPercentage() {
       if (!this.container.file || !this.data.length) return
       const loaded = this.data.map(item => item.size * item.percentage).reduce((acc, cur) => acc + cur)
-      return parseInt((loaded / this.container.file.size) * 100)
+      const percentage = parseInt((loaded / this.container.file.size).toFixed(2))
+      return percentage
     }
   },
   methods: {
@@ -30,6 +59,7 @@ export default {
     async handleUpload() {
       console.log('upload')
       if (!this.container.file) return
+      this.status = 'uploading'
       // 1. 先对文件进行切片
       const fileChunkList = this.createFileChunk(this.container.file)
       // 2. 整理文件切片 以文件名+数组下标作为hash值
@@ -37,7 +67,8 @@ export default {
         index,
         chunk: file,
         hash: this.container.file.name.split('.')[0] + '-' + index,
-        percentage: 0
+        percentage: 0,
+        size: file.size
       }))
       // 3. 上传切片
       await this.uploadChunks()
@@ -98,6 +129,8 @@ export default {
           filename: this.container.file.name
         })
       })
+      this.$message.success('上传成功！')
+      this.status = 'completed'
     },
     // 监听每个切片的上传进度
     createProgressHandler(chunk) {
